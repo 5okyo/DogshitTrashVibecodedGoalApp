@@ -48,7 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
 
-private val Bg = Color(0xFF181818)
+private val Bg = Color.Black
 private val Fg = Color.White
 private val Dim = Color(0xFF9A9A9A)
 private val Faint = Color(0xFF3A3A3A)
@@ -90,8 +90,15 @@ fun App(vm: TrackerViewModel) {
 @Composable
 fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
     val d by vm.dashboard.collectAsStateWithLifecycle()
+    val upd by vm.update.collectAsStateWithLifecycle()
     val goalsDone = d.progress.count { it.done }
     Page {
+        when (val u = upd) {
+            is UpdateState.Available ->
+                Entry("Update", u.note ?: "build ${u.release.versionCode} available · tap to install") { vm.installUpdate(u.release) }
+            UpdateState.Downloading -> Entry("Updating…", "downloading") {}
+            UpdateState.None -> {}
+        }
         Entry(
             title = if (d.ankiDoneToday) "Anki ✓" else "Anki",
             sub = "${d.ankiStreak} day streak · best ${d.ankiLongest}",
@@ -100,7 +107,7 @@ fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
             title = if (d.ankiDoneYesterday) "Yesterday ✓" else "Yesterday",
             sub = "Anki, if you forgot",
         ) { vm.toggleAnki(1) }
-        Entry("Log", "today ${d.todayChars} 文字 · ${d.todayMinutes} min") { go(Screen.LOG) }
+        Entry("Log", "today ${d.todayChars} 文字 · ${formatDuration(d.todaySeconds)}") { go(Screen.LOG) }
         Entry("Goals", if (d.progress.isEmpty()) "none yet" else "$goalsDone of ${d.progress.size} done") { go(Screen.GOALS) }
         Entry("History") { go(Screen.HISTORY) }
     }
@@ -109,19 +116,29 @@ fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
 @Composable
 fun LogScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
     var medium by remember { mutableStateOf(Medium.READING) }
+    var hours by remember { mutableStateOf("") }
     var minutes by remember { mutableStateOf("") }
+    var secs by remember { mutableStateOf("") }
     var chars by remember { mutableStateOf("") }
-    val m = minutes.toIntOrNull() ?: 0
+    // Any mix works: "90" in the minutes box alone is 1h 30m, "1" hours + "30" minutes is the same.
+    val totalSeconds = (
+        (hours.toLongOrNull() ?: 0L) * 3600 + (minutes.toLongOrNull() ?: 0L) * 60 + (secs.toLongOrNull() ?: 0L)
+        ).coerceAtMost(360_000L).toInt() // cap at 100 hours per entry
     val c = chars.toIntOrNull() ?: 0
     Page {
         Label("Medium")
         Choice(Medium.entries, medium, { it.label }) { medium = it }
         Gap()
-        PlainField("Minutes", minutes) { minutes = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PlainField("hours", hours, Modifier.weight(1f)) { hours = it }
+            PlainField("min", minutes, Modifier.weight(1f)) { minutes = it }
+            PlainField("sec", secs, Modifier.weight(1f)) { secs = it }
+        }
+        if (totalSeconds > 0) Text("= ${formatDuration(totalSeconds)}", color = Dim, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
         PlainField("文字", chars) { chars = it }
         Gap()
-        Action("Add", enabled = m > 0 || c > 0) {
-            vm.addLog(medium, m, c)
+        Action("Add", enabled = totalSeconds > 0 || c > 0) {
+            vm.addLog(medium, totalSeconds, c)
             go(Screen.HOME)
         }
     }
@@ -178,7 +195,7 @@ fun HistoryScreen(vm: TrackerViewModel) {
             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("${LocalDate.ofEpochDay(log.epochDay)} · ${log.medium.label}", color = Fg, fontSize = 20.sp, fontWeight = FontWeight.Light)
-                    Text("${log.minutes} min · ${log.characters} 文字", color = Dim, fontSize = 14.sp)
+                    Text("${formatDuration(log.seconds)} · ${log.characters} 文字", color = Dim, fontSize = 14.sp)
                 }
                 Remove { vm.deleteLog(log) }
             }
@@ -276,11 +293,11 @@ fun <T> Choice(options: List<T>, selected: T, label: (T) -> String, onSelect: (T
 }
 
 @Composable
-fun PlainField(label: String, value: String, onChange: (String) -> Unit) {
+fun PlainField(label: String, value: String, modifier: Modifier = Modifier.fillMaxWidth(), onChange: (String) -> Unit) {
     TextField(
         value = value,
         onValueChange = { onChange(it.filter(Char::isDigit).take(7)) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         label = { Text(label, color = Dim) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

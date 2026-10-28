@@ -5,6 +5,19 @@ data class GoalProgress(val goal: Goal, val current: Int) {
     val done: Boolean get() = current >= goal.target
 }
 
+/** 3725 -> "1h 2m 5s". Zero-valued parts are skipped; 0 -> "0m". */
+fun formatDuration(totalSeconds: Int): String {
+    val h = totalSeconds / 3600
+    val m = totalSeconds % 3600 / 60
+    val s = totalSeconds % 60
+    val parts = buildList {
+        if (h > 0) add("${h}h")
+        if (m > 0) add("${m}m")
+        if (s > 0) add("${s}s")
+    }
+    return if (parts.isEmpty()) "0m" else parts.joinToString(" ")
+}
+
 object Stats {
     /** Consecutive days ending today, or ending yesterday if today has no activity yet. */
     fun currentStreak(days: Set<Long>, today: Long): Int {
@@ -40,7 +53,7 @@ object Stats {
                 val inScope = logs.filter {
                     it.epochDay in from..today && (goal.medium == null || it.medium == goal.medium)
                 }
-                if (goal.metric == Metric.CHARACTERS) inScope.sumOf { it.characters } else inScope.sumOf { it.minutes }
+                if (goal.metric == Metric.CHARACTERS) inScope.sumOf { it.characters } else inScope.sumOf { it.seconds } / 60
             }
         }
         return GoalProgress(goal, current)

@@ -29,11 +29,28 @@ class StatsTest {
     @Test fun weeklyCharacterGoalCountsOnlyMatchingMediumInWindow() {
         val goal = Goal(metric = Metric.CHARACTERS, medium = Medium.READING, period = Period.WEEKLY, target = 1000)
         val logs = listOf(
-            StudyLog(epochDay = 10, medium = Medium.READING, minutes = 20, characters = 400),
-            StudyLog(epochDay = 5, medium = Medium.READING, minutes = 20, characters = 300),
-            StudyLog(epochDay = 3, medium = Medium.READING, minutes = 20, characters = 999), // outside window
-            StudyLog(epochDay = 9, medium = Medium.WATCHING, minutes = 30, characters = 0),
+            StudyLog(epochDay = 10, medium = Medium.READING, seconds = 1200, characters = 400),
+            StudyLog(epochDay = 5, medium = Medium.READING, seconds = 1200, characters = 300),
+            StudyLog(epochDay = 3, medium = Medium.READING, seconds = 1200, characters = 999), // outside window
+            StudyLog(epochDay = 9, medium = Medium.WATCHING, seconds = 1800, characters = 0),
         )
         assertEquals(700, Stats.progress(goal, logs, emptyList(), today = 10).current)
+    }
+
+    @Test fun minutesGoalSumsSecondsAndRoundsDownToMinutes() {
+        val goal = Goal(metric = Metric.MINUTES, medium = null, period = Period.DAILY, target = 60)
+        val logs = listOf(
+            StudyLog(epochDay = 10, medium = Medium.READING, seconds = 90, characters = 0),
+            StudyLog(epochDay = 10, medium = Medium.LISTENING, seconds = 3600 + 29, characters = 0),
+        )
+        // 90 + 3629 = 3719 seconds = 61 minutes (and 59 seconds)
+        assertEquals(61, Stats.progress(goal, logs, emptyList(), today = 10).current)
+    }
+
+    @Test fun durationFormatting() {
+        assertEquals("1h 2m 5s", formatDuration(3725))
+        assertEquals("45s", formatDuration(45))
+        assertEquals("2h", formatDuration(7200))
+        assertEquals("0m", formatDuration(0))
     }
 }

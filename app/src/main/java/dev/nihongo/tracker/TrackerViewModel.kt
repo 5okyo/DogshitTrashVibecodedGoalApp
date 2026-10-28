@@ -3,6 +3,7 @@ package dev.nihongo.tracker
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -17,13 +18,18 @@ data class Dashboard(
     val ankiDoneToday: Boolean,
     val ankiDoneYesterday: Boolean,
     val todayChars: Int,
-    val todayMinutes: Int,
+    val todaySeconds: Int,
     val progress: List<GoalProgress>,
-    val weekMinutesByMedium: List<Pair<Medium, Int>>,
 ) {
     companion object {
-        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, false, false, 0, 0, emptyList(), emptyList())
+        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, false, false, 0, 0, emptyList())
     }
+}
+
+sealed interface UpdateState {
+    data object None : UpdateState
+    data class Available(val release: Updater.Release, val note: String? = null) : UpdateState
+    data object Downloading : UpdateState
 }
 
 class TrackerViewModel(app: Application) : AndroidViewModel(app) {
@@ -46,18 +52,13 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
             ankiDoneToday = today in ankiActive,
             ankiDoneYesterday = (today - 1) in ankiActive,
             todayChars = todayLogs.sumOf { it.characters },
-            todayMinutes = todayLogs.sumOf { it.minutes },
+            todaySeconds = todayLogs.sumOf { it.seconds },
             progress = g.map { Stats.progress(it, l, a, today) },
-            weekMinutesByMedium = l.filter { it.epochDay in (today - 6)..today }
-                .groupBy { it.medium }
-                .map { (m, entries) -> m to entries.sumOf { it.minutes } }
-                .filter { it.second > 0 }
-                .sortedByDescending { it.second },
         )
     }.stateIn(viewModelScope, share, Dashboard.empty())
 
-    fun addLog(medium: Medium, minutes: Int, characters: Int, note: String = "") = viewModelScope.launch {
-        dao.insertLog(StudyLog(epochDay = LocalDate.now().toEpochDay(), medium = medium, minutes = minutes, characters = characters, note = note))
+    fun addLog(medium: Medium, seconds: Int, characters: Int, note: String = "") = viewModelScope.launch {
+        dao.insertLog(StudyLog(epochDay = LocalDate.now().toEpochDay(), medium = medium, seconds = seconds, characters = characters, note = note))
     }
 
     fun deleteLog(log: StudyLog) = viewModelScope.launch { dao.deleteLog(log) }
@@ -76,4 +77,36 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
     fun addGoal(goal: Goal) = viewModelScope.launch { dao.insertGoal(goal) }
 
     fun deleteGoal(goal: Goal) = viewModelScope.launch { dao.deleteGoal(goal) }
+
+    // ---------- Updates (GitHub Releases) ----------
+
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.None)
+    val update: StateFlow<UpdateState> = _update
+
+    init {
+        checkForUpdate()
+    }
+
+    /** Quietly checks the latest GitHub release; offline or any error just means "no update". */
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            val latest = runCatching { Updater.latest() }.getOrNull()
+            if (latest != null && latest.versionCode > BuildConfig.VERSION_CODE) {
+                _update.value = UpdateState.Available(latest)
+            }
+        }
+    }
+
+    fun installUpdate(release: Updater.Release) {
+        viewModelScope.launch {
+            _update.value = UpdateState.Downloading
+            val ctx = getApplication<Application>()
+            val result = runCatching { Updater.install(ctx, Updater.download(ctx, release.apkUrl)) }
+            _update.value = when {
+                result.isFailure -> UpdateState.Available(release, "download failed, tap to retry")
+                result.getOrNull() == false -> UpdateState.Available(release, "allow installs from this app, then tap again")
+                else -> UpdateState.Available(release)
+            }
+        }
+    }
 }

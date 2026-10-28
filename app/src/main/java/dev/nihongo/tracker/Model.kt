@@ -32,7 +32,7 @@ data class StudyLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val epochDay: Long,
     val medium: Medium,
-    val minutes: Int,
+    val seconds: Int,
     val characters: Int,
     val note: String = "",
 )
