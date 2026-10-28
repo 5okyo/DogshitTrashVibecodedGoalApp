@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 卍 (manji): the arms are drawn as overlapping rectangles on a 5x5 grid. -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M24,24h36v12h-36z
+                          M72,24h12v36h-12z
+                          M48,24h12v60h-12z
+                          M24,48h60v12h-60z
+                          M24,48h12v36h-12z
+                          M48,72h36v12h-36z" />
+</vector>
