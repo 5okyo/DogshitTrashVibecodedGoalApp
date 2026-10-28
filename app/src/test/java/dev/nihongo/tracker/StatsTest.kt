@@ -20,6 +20,12 @@ class StatsTest {
         assertEquals(4, Stats.longestStreak(setOf(1L, 2L, 5L, 6L, 7L, 8L, 12L)))
     }
 
+    @Test fun ankiDaysGoalCountsDaysInWindow() {
+        val goal = Goal(metric = Metric.ANKI_DAYS, medium = null, period = Period.WEEKLY, target = 5)
+        val anki = listOf(AnkiDay(10, 1), AnkiDay(9, 1), AnkiDay(8, 1), AnkiDay(2, 1))
+        assertEquals(3, Stats.progress(goal, emptyList(), anki, today = 10).current)
+    }
+
     @Test fun weeklyCharacterGoalCountsOnlyMatchingMediumInWindow() {
         val goal = Goal(metric = Metric.CHARACTERS, medium = Medium.READING, period = Period.WEEKLY, target = 1000)
         val logs = listOf(

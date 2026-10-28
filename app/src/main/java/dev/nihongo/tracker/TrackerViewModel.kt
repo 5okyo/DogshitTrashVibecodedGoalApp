@@ -14,14 +14,14 @@ data class Dashboard(
     val today: Long,
     val ankiStreak: Int,
     val ankiLongest: Int,
-    val ankiToday: Int,
+    val ankiDoneToday: Boolean,
     val todayChars: Int,
     val todayMinutes: Int,
     val progress: List<GoalProgress>,
     val weekMinutesByMedium: List<Pair<Medium, Int>>,
 ) {
     companion object {
-        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, 0, 0, 0, emptyList(), emptyList())
+        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, false, 0, 0, emptyList(), emptyList())
     }
 }
 
@@ -42,7 +42,7 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
             today = today,
             ankiStreak = Stats.currentStreak(ankiActive, today),
             ankiLongest = Stats.longestStreak(ankiActive),
-            ankiToday = a.firstOrNull { it.epochDay == today }?.reviews ?: 0,
+            ankiDoneToday = today in ankiActive,
             todayChars = todayLogs.sumOf { it.characters },
             todayMinutes = todayLogs.sumOf { it.minutes },
             progress = g.map { Stats.progress(it, l, a, today) },
@@ -60,20 +60,13 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteLog(log: StudyLog) = viewModelScope.launch { dao.deleteLog(log) }
 
-    fun setAnkiToday(reviews: Int) = viewModelScope.launch {
-        dao.upsertAnkiDay(AnkiDay(LocalDate.now().toEpochDay(), reviews))
+    /** The "Anki done" button: marks today done, or undoes it. */
+    fun setAnkiDoneToday(done: Boolean) = viewModelScope.launch {
+        val today = LocalDate.now().toEpochDay()
+        if (done) dao.upsertAnkiDay(AnkiDay(today, 1)) else dao.deleteAnkiDay(today)
     }
 
     fun addGoal(goal: Goal) = viewModelScope.launch { dao.insertGoal(goal) }
 
     fun deleteGoal(goal: Goal) = viewModelScope.launch { dao.deleteGoal(goal) }
-
-    /** Merges imported per-day review counts, keeping the larger of imported vs. existing. */
-    fun importAnki(source: AnkiSource, daysBack: Long = 365) = viewModelScope.launch {
-        val today = LocalDate.now().toEpochDay()
-        val existing = ankiDays.value.associate { it.epochDay to it.reviews }
-        source.reviewsByDay(today - daysBack).forEach { (day, reviews) ->
-            if (reviews > (existing[day] ?: 0)) dao.upsertAnkiDay(AnkiDay(day, reviews))
-        }
-    }
 }

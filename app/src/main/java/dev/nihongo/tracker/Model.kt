@@ -18,7 +18,7 @@ enum class Medium(val label: String) {
 enum class Metric(val label: String) {
     CHARACTERS("文字 count"),
     MINUTES("Minutes"),
-    ANKI_REVIEWS("Anki reviews"),
+    ANKI_DAYS("Anki days"),
 }
 
 enum class Period(val label: String) {
@@ -47,7 +47,7 @@ data class Goal(
     val target: Int,
 )
 
-/** Anki reviews done on a day. A day with reviews > 0 counts toward the Anki streak. */
+/** A day you marked Anki as done (reviews = 1). A row existing means the day counts toward the streak. */
 @Entity(tableName = "anki_day")
 data class AnkiDay(
     @PrimaryKey val epochDay: Long,

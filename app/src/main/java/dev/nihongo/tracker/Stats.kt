@@ -35,7 +35,7 @@ object Stats {
     fun progress(goal: Goal, logs: List<StudyLog>, anki: List<AnkiDay>, today: Long): GoalProgress {
         val from = windowStart(goal.period, today)
         val current = when (goal.metric) {
-            Metric.ANKI_REVIEWS -> anki.filter { it.epochDay in from..today }.sumOf { it.reviews }
+            Metric.ANKI_DAYS -> anki.count { it.epochDay in from..today && it.reviews > 0 }
             else -> {
                 val inScope = logs.filter {
                     it.epochDay in from..today && (goal.medium == null || it.medium == goal.medium)

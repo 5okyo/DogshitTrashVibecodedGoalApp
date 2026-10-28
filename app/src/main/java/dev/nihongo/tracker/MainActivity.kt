@@ -21,6 +21,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -105,7 +106,7 @@ fun TodayScreen(vm: TrackerViewModel) {
                 }
             }
         }
-        item { AnkiTodayCard(reviewsToday = d.ankiToday, onSave = vm::setAnkiToday) }
+        item { AnkiButton(doneToday = d.ankiDoneToday, onToggle = vm::setAnkiDoneToday) }
         if (d.progress.isNotEmpty()) {
             item { Text("Goals", style = MaterialTheme.typography.titleMedium) }
             items(d.progress) { GoalCard(it, onDelete = null) }
@@ -125,13 +126,16 @@ fun TodayScreen(vm: TrackerViewModel) {
     }
 }
 
+/** One tap to keep the Anki streak alive; tap again to undo. */
 @Composable
-fun AnkiTodayCard(reviewsToday: Int, onSave: (Int) -> Unit) {
-    var text by remember(reviewsToday) { mutableStateOf(if (reviewsToday > 0) reviewsToday.toString() else "") }
-    Card(Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NumberField("Anki reviews today", text, { text = it }, Modifier.weight(1f))
-            Button(onClick = { onSave(text.toIntOrNull() ?: 0) }) { Text("Save") }
+fun AnkiButton(doneToday: Boolean, onToggle: (Boolean) -> Unit) {
+    if (doneToday) {
+        OutlinedButton(onClick = { onToggle(false) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Anki done today ✓  (tap to undo)")
+        }
+    } else {
+        Button(onClick = { onToggle(true) }, modifier = Modifier.fillMaxWidth()) {
+            Text("I did Anki today")
         }
     }
 }
@@ -197,7 +201,7 @@ fun GoalsScreen(vm: TrackerViewModel) {
 @Composable
 fun GoalCard(p: GoalProgress, onDelete: (() -> Unit)?) {
     val g = p.goal
-    val scope = if (g.metric == Metric.ANKI_REVIEWS) "" else " · ${g.medium?.label ?: "All media"}"
+    val scope = if (g.metric == Metric.ANKI_DAYS) "" else " · ${g.medium?.label ?: "All media"}"
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row {
@@ -221,14 +225,14 @@ fun NewGoalForm(onCreate: (Goal) -> Unit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("New goal", style = MaterialTheme.typography.titleMedium)
             Chips(Metric.entries, metric, { it.label }) { metric = it }
-            if (metric != Metric.ANKI_REVIEWS) {
+            if (metric != Metric.ANKI_DAYS) {
                 Chips(listOf<Medium?>(null) + Medium.entries, medium, { it?.label ?: "All media" }) { medium = it }
             }
             Chips(Period.entries, period, { it.label }) { period = it }
             NumberField("Target", target, { target = it }, Modifier.fillMaxWidth())
             Button(
                 onClick = {
-                    onCreate(Goal(metric = metric, medium = if (metric == Metric.ANKI_REVIEWS) null else medium, period = period, target = t))
+                    onCreate(Goal(metric = metric, medium = if (metric == Metric.ANKI_DAYS) null else medium, period = period, target = t))
                     target = ""
                 },
                 enabled = t > 0,

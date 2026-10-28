@@ -34,6 +34,9 @@ interface TrackerDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAnkiDay(day: AnkiDay)
 
+    @Query("DELETE FROM anki_day WHERE epochDay = :day")
+    suspend fun deleteAnkiDay(day: Long)
+
     @Query("SELECT * FROM anki_day ORDER BY epochDay")
     fun ankiDays(): Flow<List<AnkiDay>>
 }
