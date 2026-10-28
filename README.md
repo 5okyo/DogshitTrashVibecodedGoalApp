@@ -1,22 +1,29 @@
 # Nihongo Tracker
 
-Personal Android app (Kotlin, Jetpack Compose, Room) for tracking Japanese study goals. All data stays on the phone.
+Personal Android app (Kotlin, Jetpack Compose, Room) for tracking Japanese study goals. Plain dark text-list UI. All data stays on the phone.
 
 ## What it does
-- **Log study**: medium (Anki, Reading, Listening, Watching, Games, Speaking, Textbook, Other), minutes, and 文字 count.
-- **Anki streak**: one button, "I did Anki today". Tap it once a day to keep the streak; tap again to undo. Shows current and longest streak. There is no AnkiConnect/AnkiDroid integration.
-- **Goals**: metric (文字 count, minutes, or Anki days) × medium (or all) × period (daily, or the last 7 days) × target. Progress bars on the Today tab.
-- **History**: every log, with delete. **Today** also shows minutes per medium for the last 7 days.
+- **Anki** (home screen): tap once a day to keep the streak, tap again to undo. Shows current and longest streak.
+- **Yesterday**: tap to mark yesterday's Anki as done if you forgot (tap again to undo).
+- **Log**: pick a medium (Anki, Reading, Listening, Watching, Games, Speaking, Textbook, Other), enter minutes and/or 文字.
+- **Goals**: metric (文字 count, minutes, or Anki days) × medium (or all) × period (daily, or last 7 days) × target, with a thin progress bar.
+- **History**: every log, with remove.
 
-## Build and run
-1. Open this folder in Android Studio (Ladybug or newer, JDK 17). It will download Gradle and the SDK.
-2. Run on a device or emulator (Android 8.0 / API 26 or newer).
-3. Unit tests for streaks and goal progress: `./gradlew test` (Android Studio generates the Gradle wrapper on first sync).
+## Get an APK without Android Studio
+Every push to `main` runs the **Build APK** GitHub Action (`.github/workflows/build-apk.yml`).
+1. Open the repo's **Actions** tab and click the latest run (or run it manually with *Run workflow*).
+2. Download the `nihongo-tracker-debug-apk` artifact at the bottom of the run page and unzip it.
+3. Copy `app-debug.apk` to your phone and install it (allow "install unknown apps" for your file manager or browser).
+
+It is a debug-signed APK, which is fine for personal use. The repo includes a fixed debug keystore (`app/debug.keystore`, debug-only, not a secret), so every run is signed with the same key and a new APK installs over the old one without losing your data. Artifacts expire after 90 days, so re-run the workflow when needed.
+
+## Build locally
+Open the folder in Android Studio (JDK 17), or run `./gradlew assembleDebug`. Needs Android 8.0 (API 26) or newer to run.
 
 ## Status
-Written but **not yet compiled or run**: it was written in an environment with no Android SDK. Expect to fix a few small compile errors on first build.
+Written but **not yet compiled or run** by its author's tooling (no Android SDK was available). The first Actions run is the first real compile, so expect to fix a few small errors; the build log will point to them.
 
 ## Known simplifications
-- "Today" is recalculated when data changes, not at midnight while the app is open.
+- Home-screen numbers refresh when data changes, not at midnight while the app sits open (the Anki buttons themselves always use the real current date).
 - Weekly goals use a rolling 7-day window, not calendar weeks.
-- Missed days can't be backfilled and logs can't be edited yet (delete and re-add).
+- Logs can't be edited (remove and re-add). Only today and yesterday can be marked for Anki.

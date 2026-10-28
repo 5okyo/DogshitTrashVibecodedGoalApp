@@ -1,64 +1,67 @@
 package dev.nihongo.tracker
 
-import android.os.Build
+import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
 
+private val Bg = Color(0xFF181818)
+private val Fg = Color.White
+private val Dim = Color(0xFF9A9A9A)
+private val Faint = Color(0xFF3A3A3A)
+
+enum class Screen { HOME, LOG, GOALS, NEW_GOAL, HISTORY }
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val bars = SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         setContent {
-            val dark = isSystemInDarkTheme()
-            val ctx = LocalContext.current
-            // Dynamic color needs Android 12+ (API 31); minSdk is 26, so fall back below that.
-            val colors = when {
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-                    if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-                dark -> darkColorScheme()
-                else -> lightColorScheme()
-            }
-            MaterialTheme(colorScheme = colors) {
+            MaterialTheme(colorScheme = darkColorScheme(background = Bg, surface = Bg, onBackground = Fg, onSurface = Fg, primary = Fg)) {
                 App(viewModel())
             }
         }
@@ -67,197 +70,228 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App(vm: TrackerViewModel) {
-    var tab by remember { mutableIntStateOf(0) }
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                listOf("Today", "History", "Goals").forEachIndexed { i, title ->
-                    NavigationBarItem(selected = tab == i, onClick = { tab = i }, icon = {}, label = { Text(title) })
-                }
-            }
-        },
-    ) { pad ->
-        Box(Modifier.padding(pad)) {
-            when (tab) {
-                0 -> TodayScreen(vm)
-                1 -> HistoryScreen(vm)
-                else -> GoalsScreen(vm)
-            }
+    var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    BackHandler(enabled = screen != Screen.HOME) {
+        screen = if (screen == Screen.NEW_GOAL) Screen.GOALS else Screen.HOME
+    }
+    Box(Modifier.fillMaxSize().background(Bg).systemBarsPadding()) {
+        when (screen) {
+            Screen.HOME -> HomeScreen(vm) { screen = it }
+            Screen.LOG -> LogScreen(vm) { screen = it }
+            Screen.GOALS -> GoalsScreen(vm) { screen = it }
+            Screen.NEW_GOAL -> NewGoalScreen(vm) { screen = it }
+            Screen.HISTORY -> HistoryScreen(vm)
         }
     }
 }
 
-// ---------- Today ----------
+// ---------- Screens ----------
 
 @Composable
-fun TodayScreen(vm: TrackerViewModel) {
+fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
     val d by vm.dashboard.collectAsStateWithLifecycle()
-    LazyColumn(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item { Text("今日", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 16.dp)) }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Anki streak: ${d.ankiStreak} days", style = MaterialTheme.typography.titleLarge)
-                    Text("Longest: ${d.ankiLongest} days")
-                    Text("Today: ${d.todayChars} 文字 · ${d.todayMinutes} min")
-                }
-            }
-        }
-        item { AnkiButton(doneToday = d.ankiDoneToday, onToggle = vm::setAnkiDoneToday) }
-        if (d.progress.isNotEmpty()) {
-            item { Text("Goals", style = MaterialTheme.typography.titleMedium) }
-            items(d.progress) { GoalCard(it, onDelete = null) }
-        }
-        item { LogForm(onAdd = { m, min, ch -> vm.addLog(m, min, ch) }) }
-        if (d.weekMinutesByMedium.isNotEmpty()) {
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Last 7 days by medium", style = MaterialTheme.typography.titleMedium)
-                        d.weekMinutesByMedium.forEach { (m, min) -> Text("${m.label}: $min min") }
-                    }
-                }
-            }
-        }
-        item { Box(Modifier.padding(bottom = 16.dp)) }
-    }
-}
-
-/** One tap to keep the Anki streak alive; tap again to undo. */
-@Composable
-fun AnkiButton(doneToday: Boolean, onToggle: (Boolean) -> Unit) {
-    if (doneToday) {
-        OutlinedButton(onClick = { onToggle(false) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Anki done today ✓  (tap to undo)")
-        }
-    } else {
-        Button(onClick = { onToggle(true) }, modifier = Modifier.fillMaxWidth()) {
-            Text("I did Anki today")
-        }
+    val goalsDone = d.progress.count { it.done }
+    Page {
+        Entry(
+            title = if (d.ankiDoneToday) "Anki ✓" else "Anki",
+            sub = "${d.ankiStreak} day streak · best ${d.ankiLongest}",
+        ) { vm.toggleAnki(0) }
+        Entry(
+            title = if (d.ankiDoneYesterday) "Yesterday ✓" else "Yesterday",
+            sub = "Anki, if you forgot",
+        ) { vm.toggleAnki(1) }
+        Entry("Log", "today ${d.todayChars} 文字 · ${d.todayMinutes} min") { go(Screen.LOG) }
+        Entry("Goals", if (d.progress.isEmpty()) "none yet" else "$goalsDone of ${d.progress.size} done") { go(Screen.GOALS) }
+        Entry("History") { go(Screen.HISTORY) }
     }
 }
 
 @Composable
-fun LogForm(onAdd: (Medium, Int, Int) -> Unit) {
+fun LogScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
     var medium by remember { mutableStateOf(Medium.READING) }
     var minutes by remember { mutableStateOf("") }
     var chars by remember { mutableStateOf("") }
     val m = minutes.toIntOrNull() ?: 0
     val c = chars.toIntOrNull() ?: 0
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Log study", style = MaterialTheme.typography.titleMedium)
-            Chips(Medium.entries, medium, { it.label }) { medium = it }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumberField("Minutes", minutes, { minutes = it }, Modifier.weight(1f))
-                NumberField("文字", chars, { chars = it }, Modifier.weight(1f))
-            }
-            Button(
-                onClick = { onAdd(medium, m, c); minutes = ""; chars = "" },
-                enabled = m > 0 || c > 0,
-            ) { Text("Add") }
+    Page {
+        Label("Medium")
+        Choice(Medium.entries, medium, { it.label }) { medium = it }
+        Gap()
+        PlainField("Minutes", minutes) { minutes = it }
+        PlainField("文字", chars) { chars = it }
+        Gap()
+        Action("Add", enabled = m > 0 || c > 0) {
+            vm.addLog(medium, m, c)
+            go(Screen.HOME)
         }
     }
 }
 
-// ---------- History ----------
-
 @Composable
-fun HistoryScreen(vm: TrackerViewModel) {
-    val logs by vm.logs.collectAsStateWithLifecycle()
-    LazyColumn(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("History", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 16.dp)) }
-        if (logs.isEmpty()) item { Text("Nothing logged yet.") }
-        items(logs, key = { it.id }) { log ->
-            Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("${LocalDate.ofEpochDay(log.epochDay)} · ${log.medium.label}")
-                        Text("${log.minutes} min · ${log.characters} 文字", style = MaterialTheme.typography.bodySmall)
-                    }
-                    TextButton(onClick = { vm.deleteLog(log) }) { Text("Delete") }
-                }
-            }
-        }
-    }
-}
-
-// ---------- Goals ----------
-
-@Composable
-fun GoalsScreen(vm: TrackerViewModel) {
+fun GoalsScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
     val d by vm.dashboard.collectAsStateWithLifecycle()
-    LazyColumn(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Goals", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 16.dp)) }
-        items(d.progress, key = { it.goal.id }) { GoalCard(it, onDelete = { vm.deleteGoal(it.goal) }) }
-        item { NewGoalForm(onCreate = vm::addGoal) }
-        item { Box(Modifier.padding(bottom = 16.dp)) }
+    Page {
+        if (d.progress.isEmpty()) Text("No goals yet", color = Dim, fontSize = 18.sp, fontWeight = FontWeight.Light)
+        d.progress.forEach { p -> GoalRow(p) { vm.deleteGoal(p.goal) } }
+        Gap()
+        Entry("New goal") { go(Screen.NEW_GOAL) }
     }
 }
 
 @Composable
-fun GoalCard(p: GoalProgress, onDelete: (() -> Unit)?) {
-    val g = p.goal
-    val scope = if (g.metric == Metric.ANKI_DAYS) "" else " · ${g.medium?.label ?: "All media"}"
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row {
-                Text("${g.metric.label}$scope · ${g.period.label}", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                if (onDelete != null) TextButton(onClick = onDelete) { Text("Delete") }
-            }
-            LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
-            Text("${p.current} / ${g.target}" + if (p.done) "  ✓" else "")
-        }
-    }
-}
-
-@Composable
-fun NewGoalForm(onCreate: (Goal) -> Unit) {
+fun NewGoalScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
     var metric by remember { mutableStateOf(Metric.CHARACTERS) }
     var medium by remember { mutableStateOf<Medium?>(null) }
     var period by remember { mutableStateOf(Period.DAILY) }
     var target by remember { mutableStateOf("") }
     val t = target.toIntOrNull() ?: 0
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("New goal", style = MaterialTheme.typography.titleMedium)
-            Chips(Metric.entries, metric, { it.label }) { metric = it }
-            if (metric != Metric.ANKI_DAYS) {
-                Chips(listOf<Medium?>(null) + Medium.entries, medium, { it?.label ?: "All media" }) { medium = it }
-            }
-            Chips(Period.entries, period, { it.label }) { period = it }
-            NumberField("Target", target, { target = it }, Modifier.fillMaxWidth())
-            Button(
-                onClick = {
-                    onCreate(Goal(metric = metric, medium = if (metric == Metric.ANKI_DAYS) null else medium, period = period, target = t))
-                    target = ""
-                },
-                enabled = t > 0,
-            ) { Text("Create goal") }
+    Page {
+        Label("Track")
+        Choice(Metric.entries, metric, { it.label }) { metric = it }
+        if (metric != Metric.ANKI_DAYS) {
+            Gap()
+            Label("Medium")
+            Choice(listOf<Medium?>(null) + Medium.entries, medium, { it?.label ?: "All" }) { medium = it }
+        }
+        Gap()
+        Label("Period")
+        Choice(Period.entries, period, { it.label }) { period = it }
+        Gap()
+        PlainField("Target", target) { target = it }
+        Gap()
+        Action("Create", enabled = t > 0) {
+            vm.addGoal(Goal(metric = metric, medium = if (metric == Metric.ANKI_DAYS) null else medium, period = period, target = t))
+            go(Screen.GOALS)
         }
     }
 }
 
-// ---------- Shared bits ----------
-
 @Composable
-fun <T> Chips(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(options) { o -> FilterChip(selected = selected == o, onClick = { onSelect(o) }, label = { Text(label(o)) }) }
+fun HistoryScreen(vm: TrackerViewModel) {
+    val logs by vm.logs.collectAsStateWithLifecycle()
+    LazyColumn(
+        Modifier.fillMaxSize().padding(start = 40.dp, end = 24.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 32.dp),
+    ) {
+        if (logs.isEmpty()) item { Text("Nothing logged yet", color = Dim, fontSize = 18.sp, fontWeight = FontWeight.Light) }
+        items(logs, key = { it.id }) { log ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("${LocalDate.ofEpochDay(log.epochDay)} · ${log.medium.label}", color = Fg, fontSize = 20.sp, fontWeight = FontWeight.Light)
+                    Text("${log.minutes} min · ${log.characters} 文字", color = Dim, fontSize = 14.sp)
+                }
+                Remove { vm.deleteLog(log) }
+            }
+        }
+    }
+}
+
+// ---------- Building blocks ----------
+
+/** Vertically centred, left-aligned column on the dark background, like a launcher list. */
+@Composable
+fun Page(content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 40.dp, end = 24.dp, top = 24.dp, bottom = 24.dp),
+            content = content,
+        )
     }
 }
 
 @Composable
-fun NumberField(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    OutlinedTextField(
+fun Entry(title: String, sub: String? = null, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp)) {
+        Text(title, color = Fg, fontSize = 32.sp, fontWeight = FontWeight.Light)
+        if (sub != null) Text(sub, color = Dim, fontSize = 14.sp)
+    }
+}
+
+@Composable
+fun GoalRow(p: GoalProgress, onRemove: () -> Unit) {
+    val g = p.goal
+    val title = if (g.metric == Metric.ANKI_DAYS) "Anki days" else "${g.medium?.label ?: "All media"} · ${g.metric.label}"
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Fg, fontSize = 22.sp, fontWeight = FontWeight.Light)
+                Text("${g.period.label} · ${p.current} / ${g.target}" + if (p.done) " ✓" else "", color = Dim, fontSize = 14.sp)
+            }
+            Remove(onRemove)
+        }
+        LinearProgressIndicator(
+            progress = { p.fraction },
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp),
+            color = Fg,
+            trackColor = Faint,
+        )
+    }
+}
+
+@Composable
+fun Remove(onClick: () -> Unit) {
+    Text("remove", color = Dim, fontSize = 14.sp, modifier = Modifier.clickable(onClick = onClick).padding(8.dp))
+}
+
+@Composable
+fun Label(text: String) {
+    Text(text, color = Dim, fontSize = 14.sp, modifier = Modifier.padding(bottom = 2.dp))
+}
+
+@Composable
+fun Gap() {
+    Box(Modifier.height(20.dp))
+}
+
+@Composable
+fun Action(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(
+        text,
+        color = if (enabled) Fg else Faint,
+        fontSize = 32.sp,
+        fontWeight = FontWeight.Light,
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick).padding(vertical = 10.dp),
+    )
+}
+
+/** A row of plain words; the selected one is white, the rest grey. */
+@Composable
+fun <T> Choice(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        items(options) { o ->
+            val on = o == selected
+            Text(
+                label(o),
+                color = if (on) Fg else Dim,
+                fontSize = 20.sp,
+                fontWeight = if (on) FontWeight.Medium else FontWeight.Light,
+                modifier = Modifier.clickable { onSelect(o) }.padding(vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+fun PlainField(label: String, value: String, onChange: (String) -> Unit) {
+    TextField(
         value = value,
         onValueChange = { onChange(it.filter(Char::isDigit).take(7)) },
-        modifier = modifier,
-        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label, color = Dim) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            focusedTextColor = Fg,
+            unfocusedTextColor = Fg,
+            cursorColor = Fg,
+            focusedIndicatorColor = Dim,
+            unfocusedIndicatorColor = Faint,
+        ),
     )
 }

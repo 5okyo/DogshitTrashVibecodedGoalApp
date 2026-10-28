@@ -17,6 +17,17 @@ android {
         versionName = "0.1"
     }
 
+    // A fixed, committed debug key so APKs from different CI runs share one signature and can
+    // be installed over each other without wiping app data. Debug-only; not a secret.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release { isMinifyEnabled = false }
     }

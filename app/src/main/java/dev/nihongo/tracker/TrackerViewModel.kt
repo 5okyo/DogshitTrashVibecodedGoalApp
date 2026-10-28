@@ -15,13 +15,14 @@ data class Dashboard(
     val ankiStreak: Int,
     val ankiLongest: Int,
     val ankiDoneToday: Boolean,
+    val ankiDoneYesterday: Boolean,
     val todayChars: Int,
     val todayMinutes: Int,
     val progress: List<GoalProgress>,
     val weekMinutesByMedium: List<Pair<Medium, Int>>,
 ) {
     companion object {
-        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, false, 0, 0, emptyList(), emptyList())
+        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, false, false, 0, 0, emptyList(), emptyList())
     }
 }
 
@@ -43,6 +44,7 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
             ankiStreak = Stats.currentStreak(ankiActive, today),
             ankiLongest = Stats.longestStreak(ankiActive),
             ankiDoneToday = today in ankiActive,
+            ankiDoneYesterday = (today - 1) in ankiActive,
             todayChars = todayLogs.sumOf { it.characters },
             todayMinutes = todayLogs.sumOf { it.minutes },
             progress = g.map { Stats.progress(it, l, a, today) },
@@ -60,10 +62,15 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteLog(log: StudyLog) = viewModelScope.launch { dao.deleteLog(log) }
 
-    /** The "Anki done" button: marks today done, or undoes it. */
-    fun setAnkiDoneToday(done: Boolean) = viewModelScope.launch {
-        val today = LocalDate.now().toEpochDay()
-        if (done) dao.upsertAnkiDay(AnkiDay(today, 1)) else dao.deleteAnkiDay(today)
+    /**
+     * The Anki buttons: flips the done state of today ([daysAgo] = 0) or yesterday ([daysAgo] = 1).
+     * The date and current state are read at tap time, so this stays right even if the app was
+     * left open past midnight.
+     */
+    fun toggleAnki(daysAgo: Long) = viewModelScope.launch {
+        val day = LocalDate.now().toEpochDay() - daysAgo
+        val done = ankiDays.value.any { it.epochDay == day && it.reviews > 0 }
+        if (done) dao.deleteAnkiDay(day) else dao.upsertAnkiDay(AnkiDay(day, 1))
     }
 
     fun addGoal(goal: Goal) = viewModelScope.launch { dao.insertGoal(goal) }
