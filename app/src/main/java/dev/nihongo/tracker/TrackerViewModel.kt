@@ -27,7 +27,10 @@ data class Dashboard(
 }
 
 sealed interface UpdateState {
-    data object None : UpdateState
+    data object None : UpdateState // not checked yet
+    data object Checking : UpdateState
+    data object UpToDate : UpdateState
+    data class Failed(val message: String) : UpdateState
     data class Available(val release: Updater.Release, val note: String? = null) : UpdateState
     data object Downloading : UpdateState
 }
@@ -38,7 +41,7 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
 
     val logs: StateFlow<List<StudyLog>> = dao.logs().stateIn(viewModelScope, share, emptyList())
     private val goals: StateFlow<List<Goal>> = dao.goals().stateIn(viewModelScope, share, emptyList())
-    private val ankiDays: StateFlow<List<AnkiDay>> = dao.ankiDays().stateIn(viewModelScope, share, emptyList())
+    val ankiDays: StateFlow<List<AnkiDay>> = dao.ankiDays().stateIn(viewModelScope, share, emptyList())
 
     // "Today" is recomputed whenever the data changes, not at midnight while the app sits open.
     val dashboard: StateFlow<Dashboard> = combine(logs, goals, ankiDays) { l, g, a ->
@@ -83,16 +86,20 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
     private val _update = MutableStateFlow<UpdateState>(UpdateState.None)
     val update: StateFlow<UpdateState> = _update
 
-    init {
-        checkForUpdate()
-    }
-
-    /** Quietly checks the latest GitHub release; offline or any error just means "no update". */
+    /** Asks GitHub for the latest release. Called on every app start and by the "Check for updates" row. */
     fun checkForUpdate() {
+        val current = _update.value
+        if (current is UpdateState.Checking || current is UpdateState.Downloading) return
         viewModelScope.launch {
-            val latest = runCatching { Updater.latest() }.getOrNull()
-            if (latest != null && latest.versionCode > BuildConfig.VERSION_CODE) {
-                _update.value = UpdateState.Available(latest)
+            // Keep showing an already-found update while re-checking quietly.
+            if (current !is UpdateState.Available) _update.value = UpdateState.Checking
+            val result = runCatching { Updater.latest() }
+            val latest = result.getOrNull()
+            _update.value = when {
+                result.isFailure -> current.takeIf { it is UpdateState.Available } ?: UpdateState.Failed("couldn't reach GitHub")
+                latest == null -> current.takeIf { it is UpdateState.Available } ?: UpdateState.Failed("no release found")
+                latest.versionCode > BuildConfig.VERSION_CODE -> UpdateState.Available(latest)
+                else -> UpdateState.UpToDate
             }
         }
     }

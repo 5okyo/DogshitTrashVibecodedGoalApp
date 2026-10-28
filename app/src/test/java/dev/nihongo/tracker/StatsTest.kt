@@ -47,6 +47,38 @@ class StatsTest {
         assertEquals(61, Stats.progress(goal, logs, emptyList(), today = 10).current)
     }
 
+    @Test fun heatLevelsAreQuartersOfTheBusiestDay() {
+        assertEquals(0, heatLevel(0, 100))
+        assertEquals(1, heatLevel(10, 100))
+        assertEquals(2, heatLevel(25, 100))
+        assertEquals(3, heatLevel(50, 100))
+        assertEquals(4, heatLevel(75, 100))
+        assertEquals(4, heatLevel(100, 100))
+        assertEquals(0, heatLevel(5, 0))
+    }
+
+    @Test fun heatValuesSumPerDayAndSkipEmptyDays() {
+        val logs = listOf(
+            StudyLog(epochDay = 10, medium = Medium.READING, seconds = 600, characters = 100),
+            StudyLog(epochDay = 10, medium = Medium.WATCHING, seconds = 300, characters = 0),
+            StudyLog(epochDay = 11, medium = Medium.READING, seconds = 0, characters = 50),
+        )
+        assertEquals(mapOf(10L to 900), heatValues(HeatMetric.TIME, logs, emptyList()))
+        assertEquals(mapOf(10L to 100, 11L to 50), heatValues(HeatMetric.CHARS, logs, emptyList()))
+        assertEquals(mapOf(3L to 1), heatValues(HeatMetric.ANKI, logs, listOf(AnkiDay(3, 1), AnkiDay(4, 0))))
+    }
+
+    @Test fun heatSummaryCountsActiveDaysAndStreaks() {
+        // Active on days 1, 2, 3 and 5; today is day 10 -> 10 days since the first active day.
+        val values = mapOf(1L to 10, 2L to 20, 3L to 30, 5L to 40)
+        val s = heatSummary(values, today = 10)
+        assertEquals(25, s.averagePerActiveDay)
+        assertEquals(40, s.percentDaysActive)
+        assertEquals(3, s.longestStreak)
+        assertEquals(0, s.currentStreak)
+        assertEquals(HeatSummary(0, 0, 0, 0), heatSummary(emptyMap(), today = 10))
+    }
+
     @Test fun durationFormatting() {
         assertEquals("1h 2m 5s", formatDuration(3725))
         assertEquals("45s", formatDuration(45))

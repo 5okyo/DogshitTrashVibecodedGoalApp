@@ -7,6 +7,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,11 +41,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
@@ -53,7 +58,11 @@ private val Fg = Color.White
 private val Dim = Color(0xFF9A9A9A)
 private val Faint = Color(0xFF3A3A3A)
 
-enum class Screen { HOME, LOG, GOALS, NEW_GOAL, HISTORY }
+enum class Screen { HOME, LOG, GOALS, NEW_GOAL, HEATMAP, HISTORY }
+
+// Heatmap shades on black: empty, then four greens from dim to bright.
+private val HeatColors = listOf(Color(0xFF1A1A1A), Color(0xFF0E4429), Color(0xFF006D32), Color(0xFF26A641), Color(0xFF39D353))
+private val FutureCell = Color(0xFF0D0D0D)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,6 +80,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App(vm: TrackerViewModel) {
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    // Check GitHub every time the app comes to the front, not only when the process starts.
+    LifecycleStartEffect(Unit) {
+        vm.checkForUpdate()
+        onStopOrDispose { }
+    }
     BackHandler(enabled = screen != Screen.HOME) {
         screen = if (screen == Screen.NEW_GOAL) Screen.GOALS else Screen.HOME
     }
@@ -80,6 +94,7 @@ fun App(vm: TrackerViewModel) {
             Screen.LOG -> LogScreen(vm) { screen = it }
             Screen.GOALS -> GoalsScreen(vm) { screen = it }
             Screen.NEW_GOAL -> NewGoalScreen(vm) { screen = it }
+            Screen.HEATMAP -> HeatmapScreen(vm)
             Screen.HISTORY -> HistoryScreen(vm)
         }
     }
@@ -97,7 +112,15 @@ fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
             is UpdateState.Available ->
                 Entry("Update", u.note ?: "build ${u.release.versionCode} available · tap to install") { vm.installUpdate(u.release) }
             UpdateState.Downloading -> Entry("Updating…", "downloading") {}
-            UpdateState.None -> {}
+            else -> Entry(
+                "Check for updates",
+                when (u) {
+                    UpdateState.Checking -> "checking…"
+                    UpdateState.UpToDate -> "up to date · build ${BuildConfig.VERSION_CODE}"
+                    is UpdateState.Failed -> "${u.message} · tap to retry · build ${BuildConfig.VERSION_CODE}"
+                    else -> "build ${BuildConfig.VERSION_CODE}"
+                },
+            ) { vm.checkForUpdate() }
         }
         Entry(
             title = if (d.ankiDoneToday) "Anki ✓" else "Anki",
@@ -109,6 +132,7 @@ fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
         ) { vm.toggleAnki(1) }
         Entry("Log", "today ${d.todayChars} 文字 · ${formatDuration(d.todaySeconds)}") { go(Screen.LOG) }
         Entry("Goals", if (d.progress.isEmpty()) "none yet" else "$goalsDone of ${d.progress.size} done") { go(Screen.GOALS) }
+        Entry("Heatmap") { go(Screen.HEATMAP) }
         Entry("History") { go(Screen.HISTORY) }
     }
 }
@@ -181,6 +205,63 @@ fun NewGoalScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
             go(Screen.GOALS)
         }
     }
+}
+
+/** Year-by-year grids like the Anki heatmap add-on: one column per week, one row per weekday (Mon at top). */
+@Composable
+fun HeatmapScreen(vm: TrackerViewModel) {
+    val logs by vm.logs.collectAsStateWithLifecycle()
+    val anki by vm.ankiDays.collectAsStateWithLifecycle()
+    var metric by remember { mutableStateOf(HeatMetric.ANKI) }
+    val today = LocalDate.now().toEpochDay()
+    val values = remember(metric, logs, anki) { heatValues(metric, logs, anki) }
+    val summary = remember(values, today) { heatSummary(values, today) }
+    val busiest = values.values.maxOrNull() ?: 0
+    val thisYear = LocalDate.now().year
+    val firstYear = values.keys.minOrNull()?.let { LocalDate.ofEpochDay(it).year } ?: thisYear
+
+    val average = when (metric) {
+        HeatMetric.ANKI -> null
+        HeatMetric.TIME -> formatDuration(summary.averagePerActiveDay)
+        HeatMetric.CHARS -> "${summary.averagePerActiveDay} 文字"
+    }
+    val summaryLine = listOfNotNull(
+        average?.let { "Daily average: $it" },
+        "Days active: ${summary.percentDaysActive}%",
+        "Longest streak: ${summary.longestStreak} days",
+        "Current streak: ${summary.currentStreak} days",
+    ).joinToString(" · ")
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 32.dp),
+    ) {
+        Choice(HeatMetric.entries, metric, { it.label }) { metric = it }
+        Gap()
+        Text(summaryLine, color = Dim, fontSize = 14.sp)
+        Gap()
+        for (year in thisYear downTo firstYear) YearHeatmap(year, values, busiest, today)
+    }
+}
+
+@Composable
+fun YearHeatmap(year: Int, values: Map<Long, Int>, busiest: Int, today: Long) {
+    val jan1 = LocalDate.of(year, 1, 1)
+    val length = jan1.lengthOfYear()
+    val offset = jan1.dayOfWeek.value - 1 // Monday = row 0
+    val cols = (offset + length + 6) / 7
+    val start = jan1.toEpochDay()
+    Text("$year", color = Dim, fontSize = 14.sp, modifier = Modifier.padding(bottom = 4.dp))
+    Canvas(Modifier.fillMaxWidth().aspectRatio(cols / 7f)) {
+        val gap = 1.dp.toPx()
+        val cell = (size.width - gap * (cols - 1)) / cols
+        for (i in 0 until length) {
+            val epoch = start + i
+            val idx = offset + i
+            val color = if (epoch > today) FutureCell else HeatColors[heatLevel(values[epoch] ?: 0, busiest)]
+            drawRect(color, Offset((idx / 7) * (cell + gap), (idx % 7) * (cell + gap)), Size(cell, cell))
+        }
+    }
+    Gap()
 }
 
 @Composable
