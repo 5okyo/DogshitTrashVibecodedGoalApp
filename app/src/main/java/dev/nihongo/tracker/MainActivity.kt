@@ -148,7 +148,6 @@ fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
     }
 }
 
-@Composable
 /** The Log form. With [existing] set it edits that log (prefilled, with a date picker row and Save); otherwise it adds a new one for today. */
 @Composable
 fun LogScreen(vm: TrackerViewModel, existing: StudyLog?, go: (Screen) -> Unit) {
