@@ -7,6 +7,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
@@ -20,6 +21,9 @@ interface TrackerDao {
 
     @Delete
     suspend fun deleteLog(log: StudyLog)
+
+    @Update
+    suspend fun updateLog(log: StudyLog)
 
     @Query("SELECT * FROM study_log ORDER BY epochDay DESC, id DESC")
     fun logs(): Flow<List<StudyLog>>

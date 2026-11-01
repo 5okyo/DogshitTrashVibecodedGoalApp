@@ -66,6 +66,9 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteLog(log: StudyLog) = viewModelScope.launch { dao.deleteLog(log) }
 
+    /** Saves an edited log (matched by id). */
+    fun updateLog(log: StudyLog) = viewModelScope.launch { dao.updateLog(log) }
+
     /**
      * The Anki buttons: flips the done state of today ([daysAgo] = 0) or yesterday ([daysAgo] = 1).
      * The date and current state are read at tap time, so this stays right even if the app was

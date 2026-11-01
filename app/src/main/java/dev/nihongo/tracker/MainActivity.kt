@@ -58,7 +58,7 @@ private val Fg = Color.White
 private val Dim = Color(0xFF9A9A9A)
 private val Faint = Color(0xFF3A3A3A)
 
-enum class Screen { HOME, LOG, GOALS, NEW_GOAL, HEATMAP, HISTORY }
+enum class Screen { HOME, LOG, EDIT_LOG, GOALS, NEW_GOAL, HEATMAP, HISTORY }
 
 // Heatmap shades on black: empty, then four greens from dim to bright.
 private val HeatColors = listOf(Color(0xFF1A1A1A), Color(0xFF0E4429), Color(0xFF006D32), Color(0xFF26A641), Color(0xFF39D353))
@@ -80,22 +80,33 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App(vm: TrackerViewModel) {
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    // Id of the log being edited (an id survives rotation; the row is looked up from the database).
+    var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
     // Check GitHub every time the app comes to the front, not only when the process starts.
     LifecycleStartEffect(Unit) {
         vm.checkForUpdate()
         onStopOrDispose { }
     }
     BackHandler(enabled = screen != Screen.HOME) {
-        screen = if (screen == Screen.NEW_GOAL) Screen.GOALS else Screen.HOME
+        screen = when (screen) {
+            Screen.NEW_GOAL -> Screen.GOALS
+            Screen.EDIT_LOG -> Screen.HISTORY
+            else -> Screen.HOME
+        }
     }
     Box(Modifier.fillMaxSize().background(Bg).systemBarsPadding()) {
         when (screen) {
             Screen.HOME -> HomeScreen(vm) { screen = it }
-            Screen.LOG -> LogScreen(vm) { screen = it }
+            Screen.LOG -> LogScreen(vm, existing = null) { screen = it }
+            Screen.EDIT_LOG -> {
+                val log = vm.logs.collectAsStateWithLifecycle().value.firstOrNull { it.id == editingId }
+                if (log == null) Page { Text("Log not found", color = Dim, fontSize = 18.sp) }
+                else LogScreen(vm, existing = log) { screen = it }
+            }
             Screen.GOALS -> GoalsScreen(vm) { screen = it }
             Screen.NEW_GOAL -> NewGoalScreen(vm) { screen = it }
             Screen.HEATMAP -> HeatmapScreen(vm)
-            Screen.HISTORY -> HistoryScreen(vm)
+            Screen.HISTORY -> HistoryScreen(vm) { editingId = it.id; screen = Screen.EDIT_LOG }
         }
     }
 }
@@ -138,12 +149,15 @@ fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
 }
 
 @Composable
-fun LogScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
-    var medium by remember { mutableStateOf(Medium.READING) }
-    var hours by remember { mutableStateOf("") }
-    var minutes by remember { mutableStateOf("") }
-    var secs by remember { mutableStateOf("") }
-    var chars by remember { mutableStateOf("") }
+/** The Log form. With [existing] set it edits that log (prefilled, with a date picker row and Save); otherwise it adds a new one for today. */
+@Composable
+fun LogScreen(vm: TrackerViewModel, existing: StudyLog?, go: (Screen) -> Unit) {
+    var medium by remember { mutableStateOf(existing?.medium ?: Medium.READING) }
+    var hours by remember { mutableStateOf(existing?.seconds?.div(3600)?.takeIf { it > 0 }?.toString() ?: "") }
+    var minutes by remember { mutableStateOf(existing?.seconds?.rem(3600)?.div(60)?.takeIf { it > 0 }?.toString() ?: "") }
+    var secs by remember { mutableStateOf(existing?.seconds?.rem(60)?.takeIf { it > 0 }?.toString() ?: "") }
+    var chars by remember { mutableStateOf(existing?.characters?.takeIf { it > 0 }?.toString() ?: "") }
+    var epochDay by remember { mutableStateOf(existing?.epochDay ?: LocalDate.now().toEpochDay()) }
     // Any mix works: "90" in the minutes box alone is 1h 30m, "1" hours + "30" minutes is the same.
     val totalSeconds = (
         (hours.toLongOrNull() ?: 0L) * 3600 + (minutes.toLongOrNull() ?: 0L) * 60 + (secs.toLongOrNull() ?: 0L)
@@ -161,10 +175,29 @@ fun LogScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
         if (totalSeconds > 0) Text("= ${formatDuration(totalSeconds)}", color = Dim, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
         PlainField("文字", chars) { chars = it }
         Gap()
-        Action("Add", enabled = totalSeconds > 0 || c > 0) {
-            vm.addLog(medium, totalSeconds, c)
-            go(Screen.HOME)
+        if (existing != null) {
+            Gap()
+            Label("Date")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text("‹", color = Fg, fontSize = 32.sp, fontWeight = FontWeight.Light,
+                    modifier = Modifier.clickable { epochDay -= 1 }.padding(horizontal = 12.dp, vertical = 4.dp))
+                Text(LocalDate.ofEpochDay(epochDay).toString(), color = Fg, fontSize = 22.sp, fontWeight = FontWeight.Light)
+                Text("›", color = if (epochDay < LocalDate.now().toEpochDay()) Fg else Faint, fontSize = 32.sp, fontWeight = FontWeight.Light,
+                    modifier = Modifier.clickable(enabled = epochDay < LocalDate.now().toEpochDay()) { epochDay += 1 }
+                        .padding(horizontal = 12.dp, vertical = 4.dp))
+            }
         }
+        Gap()
+        Action(if (existing != null) "Save" else "Add", enabled = totalSeconds > 0 || c > 0) {
+            if (existing != null) {
+                vm.updateLog(existing.copy(epochDay = epochDay, medium = medium, seconds = totalSeconds, characters = c))
+                go(Screen.HISTORY)
+            } else {
+                vm.addLog(medium, totalSeconds, c)
+                go(Screen.HOME)
+            }
+        }
+        if (existing != null) Action("Cancel") { go(Screen.HISTORY) }
     }
 }
 
@@ -265,16 +298,17 @@ fun YearHeatmap(year: Int, values: Map<Long, Int>, busiest: Int, today: Long) {
 }
 
 @Composable
-fun HistoryScreen(vm: TrackerViewModel) {
+fun HistoryScreen(vm: TrackerViewModel, onEdit: (StudyLog) -> Unit) {
     val logs by vm.logs.collectAsStateWithLifecycle()
     LazyColumn(
         Modifier.fillMaxSize().padding(start = 40.dp, end = 24.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 32.dp),
     ) {
         if (logs.isEmpty()) item { Text("Nothing logged yet", color = Dim, fontSize = 18.sp, fontWeight = FontWeight.Light) }
+        else item { Text("tap a log to edit", color = Dim, fontSize = 14.sp, modifier = Modifier.padding(bottom = 8.dp)) }
         items(logs, key = { it.id }) { log ->
             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f).clickable { onEdit(log) }) {
                     Text("${LocalDate.ofEpochDay(log.epochDay)} · ${log.medium.label}", color = Fg, fontSize = 20.sp, fontWeight = FontWeight.Light)
                     Text("${formatDuration(log.seconds)} · ${log.characters} 文字", color = Dim, fontSize = 14.sp)
                 }
