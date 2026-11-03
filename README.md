@@ -17,7 +17,7 @@ Every push to `main` runs the **Build APK** GitHub Action (`.github/workflows/bu
 
 The repo includes a fixed debug keystore (`app/debug.keystore`, debug-only, not a secret), so every build is signed with the same key and a new APK installs over the old one without losing data.
 
-## Auto-update (no server)
+## Auto-update 
 GitHub Releases is the update server. Every time the app comes to the front it asks GitHub for the latest release; if its build number is higher than the installed one, an **Update** line appears at the top of the home screen. There is also a **Check for updates** line (it shows the installed build number and whether you are up to date) that re-checks when tapped.
 Build 1 predates the updater, so if that is what you installed, update it by hand once.
 Some launchers keep showing the old icon after an update until you restart the launcher or the phone.
@@ -29,12 +29,3 @@ The first time, Android sends you to a settings page to allow installs from this
 
 ## Build locally
 Open the folder in Android Studio (JDK 17), or run `./gradlew assembleDebug`. Needs Android 8.0 (API 26) or newer to run.
-
-## Status
-Written but **not yet compiled or run** by its author's tooling (no Android SDK was available). The first Actions run is the first real compile, so expect to fix a few small errors; the build log will point to them.
-
-## Known simplifications
-- Home-screen numbers refresh when data changes, not at midnight while the app sits open (the Anki buttons themselves always use the real current date).
-- Weekly goals use a rolling 7-day window, not calendar weeks.
-- Logs can't be edited (remove and re-add). Only today and yesterday can be marked for Anki.
-- Database version 2 stores time in seconds; an automatic migration converts any version 1 data (minutes × 60).
