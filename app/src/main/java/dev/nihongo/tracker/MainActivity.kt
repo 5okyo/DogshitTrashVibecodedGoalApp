@@ -253,9 +253,8 @@ fun HeatmapScreen(vm: TrackerViewModel) {
     val firstYear = values.keys.minOrNull()?.let { LocalDate.ofEpochDay(it).year } ?: thisYear
 
     val average = when (metric) {
-        HeatMetric.ANKI -> null
         HeatMetric.TIME -> formatDuration(summary.averagePerActiveDay)
-        HeatMetric.CHARS -> "${summary.averagePerActiveDay} 文字"
+        HeatMetric.ANKI, HeatMetric.CHARS -> null // no average shown for these
     }
     val summaryLine = listOfNotNull(
         average?.let { "Daily average: $it" },

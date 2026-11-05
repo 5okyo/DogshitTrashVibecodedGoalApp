@@ -7,7 +7,7 @@ Personal Android app (Kotlin, Jetpack Compose, Room) for tracking Japanese study
 - **Yesterday**: tap to mark yesterday's Anki as done if you forgot (tap again to undo).
 - **Log**: pick a medium (Anki, Reading, Listening, Watching, Games, Speaking, Textbook, Other), enter time and/or 文字. Time has **hours / min / sec** boxes; use any of them (`90` in min alone is 1h 30m, same as `1` hour + `30` min).
 - **Goals**: metric (文字 count, minutes, or Anki days) × medium (or all) × period (daily, or last 7 days) × target, with a thin progress bar. Minute goals sum your logged seconds.
-- **Heatmap**: a grid per year like the Anki heatmap add-on (one column per week, Monday at the top). Switch between **Anki** (days you tapped the button), **Time** and **文字**; shades are quarters of your busiest day. Summary line: daily average, days active %, longest and current streak.
+- **Heatmap**: a grid per year like the Anki heatmap add-on (one column per week, Monday at the top). Switch between **Anki** (days you tapped the button), **Time** and **文字**; shades are quarters of your busiest day. Summary line: daily average (Time only), days active %, longest and current streak.
 - **History**: every log. Tap one to edit it (medium, time, 文字, and the date with ‹ ›), or remove it.
 
 ## Get the APK (no Android Studio needed)
