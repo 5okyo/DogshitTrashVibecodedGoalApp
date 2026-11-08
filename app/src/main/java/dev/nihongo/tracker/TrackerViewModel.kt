@@ -18,11 +18,12 @@ data class Dashboard(
     val ankiDoneToday: Boolean,
     val ankiDoneYesterday: Boolean,
     val todayChars: Int,
+    val totalChars: Long,
     val todaySeconds: Int,
     val progress: List<GoalProgress>,
 ) {
     companion object {
-        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, false, false, 0, 0, emptyList())
+        fun empty() = Dashboard(LocalDate.now().toEpochDay(), 0, 0, false, false, 0, 0L, 0, emptyList())
     }
 }
 
@@ -55,6 +56,7 @@ class TrackerViewModel(app: Application) : AndroidViewModel(app) {
             ankiDoneToday = today in ankiActive,
             ankiDoneYesterday = (today - 1) in ankiActive,
             todayChars = todayLogs.sumOf { it.characters },
+            totalChars = l.sumOf { it.characters.toLong() }, // every log, every medium, all time
             todaySeconds = todayLogs.sumOf { it.seconds },
             progress = g.map { Stats.progress(it, l, a, today) },
         )

@@ -5,6 +5,7 @@ Personal Android app (Kotlin, Jetpack Compose, Room) for tracking Japanese study
 ## What it does
 - **Anki** (home screen): tap once a day to keep the streak, tap again to undo. Shows current and longest streak.
 - **Yesterday**: tap to mark yesterday's Anki as done if you forgot (tap again to undo).
+- **Total 文字** (home screen): all-time 文字 across every medium; tap it to open the heatmap.
 - **Log**: pick a medium (Anki, Reading, Listening, Watching, Games, Speaking, Textbook, Other), enter time and/or 文字. Time has **hours / min / sec** boxes; use any of them (`90` in min alone is 1h 30m, same as `1` hour + `30` min).
 - **Goals**: metric (文字 count, minutes, or Anki days) × medium (or all) × period (daily, or last 7 days) × target, with a thin progress bar. Minute goals sum your logged seconds.
 - **Heatmap**: a grid per year like the Anki heatmap add-on (one column per week, Monday at the top). Switch between **Anki** (days you tapped the button), **Time** and **文字**; shades are quarters of your busiest day. Summary line: daily average (Time only), days active %, longest and current streak.

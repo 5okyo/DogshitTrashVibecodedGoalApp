@@ -141,6 +141,7 @@ fun HomeScreen(vm: TrackerViewModel, go: (Screen) -> Unit) {
             title = if (d.ankiDoneYesterday) "Yesterday ✓" else "Yesterday",
             sub = "Anki, if you forgot",
         ) { vm.toggleAnki(1) }
+        Entry("%,d 文字".format(d.totalChars), "total, all sources") { go(Screen.HEATMAP) }
         Entry("Log", "today ${d.todayChars} 文字 · ${formatDuration(d.todaySeconds)}") { go(Screen.LOG) }
         Entry("Goals", if (d.progress.isEmpty()) "none yet" else "$goalsDone of ${d.progress.size} done") { go(Screen.GOALS) }
         Entry("Heatmap") { go(Screen.HEATMAP) }
